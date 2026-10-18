@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disk Map</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --ink: #1c1c1a; --ink2: #6b6b66; --ink3: #9a9a94;
+  --line: #e6e6e2; --line2: #d8d8d3; --chip: #f1f1ee; --accent: #1c1c1a; --accent-ink: #fff;
+  --bad: #c2412d;
+  --good: #2f8a4c; --good-bg: #e7f4ea; --warn: #b7791f; --warn-bg: #fbf1dc; --mute-bg: #ececea; --mute-bd: #d2d2cd;
+  --c-dev-bg: #ebe7fb; --c-dev-bd: #8f84dc; --c-dev-fg: #4b3fa6;
+  --c-cache-bg: #fdeccb; --c-cache-bd: #d9a13a; --c-cache-fg: #8a5a0b;
+  --c-apps-bg: #e2edfc; --c-apps-bd: #6b98dc; --c-apps-fg: #24569e;
+  --c-media-bg: #fde3eb; --c-media-bd: #dc7598; --c-media-fg: #9c2f56;
+  --c-docs-bg: #e5f3e2; --c-docs-bd: #73b162; --c-docs-fg: #356f25;
+  --c-sdk-bg: #dcf2ef; --c-sdk-bd: #4fae9f; --c-sdk-fg: #1d6d61;
+  --c-ai-bg: #ffe5da; --c-ai-bd: #e0865f; --c-ai-fg: #9c4320;
+  --c-other-bg: #efefec; --c-other-bd: #b8b8b2; --c-other-fg: #55554f;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 1px 1px rgba(0,0,0,.02);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141413; --panel: #1c1c1b; --ink: #ecece8; --ink2: #a3a39d; --ink3: #74746f;
+    --line: #2c2c2a; --line2: #3a3a37; --chip: #262624; --accent: #ecece8; --accent-ink: #141413;
+    --bad: #d9573f;
+    --good: #6cc488; --good-bg: #1d3324; --warn: #e3b05c; --warn-bg: #3a2e17; --mute-bg: #262624; --mute-bd: #3a3a37;
+    --c-dev-bg: #2b2747; --c-dev-bd: #7d72cf; --c-dev-fg: #c9c2ff;
+    --c-cache-bg: #3d3018; --c-cache-bd: #c08f35; --c-cache-fg: #f3cf8a;
+    --c-apps-bg: #1d2c43; --c-apps-bd: #5584c9; --c-apps-fg: #b4cdf3;
+    --c-media-bg: #43202d; --c-media-bd: #c76488; --c-media-fg: #f6b6cb;
+    --c-docs-bg: #213720; --c-docs-bd: #64a052; --c-docs-fg: #b9e2ac;
+    --c-sdk-bg: #183a35; --c-sdk-bd: #45a091; --c-sdk-fg: #a6e3d8;
+    --c-ai-bg: #45261a; --c-ai-bd: #cf7651; --c-ai-fg: #ffc1a6;
+    --c-other-bg: #2a2a28; --c-other-bd: #55554f; --c-other-fg: #c4c4be;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body { font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 1440px; margin: 0 auto; padding: 20px 20px 28px; }
+header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+h1 { font-size: 20px; letter-spacing: -.01em; margin: 0; font-weight: 650; }
+.sub { color: var(--ink2); margin-top: 2px; }
+.meta { color: var(--ink3); font-size: 12px; text-align: right; }
+.meta code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; color: var(--ink2); }
+
+/* disk bar */
+.diskbar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--mute-bg); margin: 0 0 14px; }
+.diskbar span { display: block; height: 100%; transition: width .3s ease; }
+.diskbar .sys { background: var(--ink3); opacity: .55; }
+.diskbar .home { background: var(--ink3); opacity: .3; }
+.diskbar .rev { background: var(--warn); opacity: .7; }
+.diskbar .safe { background: var(--good); }
+.diskbar .free { background: transparent; }
+
+/* stat cards */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line);
+  border-radius: 12px; overflow: hidden; margin-bottom: 14px; box-shadow: var(--shadow); }
+.stat { background: var(--panel); padding: 12px 16px 13px; }
+.stat .lbl { color: var(--ink2); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.stat .lbl i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.stat .val { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin-top: 3px; }
+.stat .val small { font-size: 12px; font-weight: 500; color: var(--ink3); letter-spacing: 0; margin-left: 4px; }
+.stat .val small.up { color: var(--good); }
+
+/* main grid */
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 14px; height: calc(100vh - 230px); min-height: 560px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-height: 0; }
+.card-h { padding: 12px 14px 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.card-h h2 { font-size: 14px; margin: 0; font-weight: 620; }
+.card-h .sub { font-size: 12px; }
+.seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 2px; border: 1px solid var(--line); flex-shrink: 0; }
+.seg button { border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+.seg button.on { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+.crumbs { padding: 0 14px 8px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--ink2); }
+.crumbs a { color: var(--ink2); text-decoration: none; cursor: pointer; padding: 1px 4px; border-radius: 4px; }
+.crumbs a:hover { background: var(--chip); color: var(--ink); }
+.crumbs a.cur { color: var(--ink); font-weight: 560; }
+.crumbs .sep { color: var(--ink3); }
+.crumbs .tot { margin-left: auto; color: var(--ink3); }
+
+.tm { position: relative; flex: 1; margin: 0 14px; min-height: 0; }
+.tile { --bg-c: var(--cbg); --bd: var(--cbd); --fg: var(--cfg); position: absolute; border-radius: 6px; overflow: hidden; border: 1px solid var(--bd); background: var(--bg-c); color: var(--fg);
+  cursor: pointer; transition: filter .12s, box-shadow .12s, opacity .2s; }
+.tile.group { background: color-mix(in srgb, var(--bg-c) 45%, var(--panel)); }
+.tile:hover { filter: brightness(.97); }
+.tile.leaf:hover, .tile.group > .hd:hover { box-shadow: inset 0 0 0 1.5px var(--bd); }
+.tile .hd { position: absolute; left: 0; right: 0; top: 0; height: 20px; padding: 3px 7px 0; display: flex; justify-content: space-between; gap: 6px;
+  font-size: 11px; font-weight: 600; white-space: nowrap; }
+.tile .hd span:first-child, .tile .nm { overflow: hidden; text-overflow: ellipsis; }
+.tile .hd span:last-child { opacity: .7; font-weight: 500; }
+.tile .nm { position: absolute; left: 7px; right: 6px; top: 4px; font-size: 11px; font-weight: 560; white-space: nowrap; }
+.tile .sz { position: absolute; left: 7px; bottom: 4px; font-size: 13px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
+.tile.big .sz { font-size: 18px; }
+.tile.rest { background: repeating-linear-gradient(90deg, transparent 0 3px, color-mix(in srgb, var(--bd) 18%, transparent) 3px 4px), color-mix(in srgb, var(--bg-c) 50%, var(--panel)); cursor: default; border-style: dashed; }
+.tile.file { border-style: solid; }
+.tile.hatch::after, .tile.flag::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bd) 55%, transparent) 0 1.5px, transparent 1.5px 6px); }
+.tile.flag::after { opacity: .45; }
+.tile.hot { box-shadow: 0 0 0 2px var(--ink) !important; z-index: 5; }
+.tm.dim .tile:not(.hot):not(.group) { opacity: .35; }
+
+/* cleanup mode colours */
+.tm.cleanup .tile { --bg-c: var(--mute-bg); --bd: var(--mute-bd); --fg: var(--ink3); }
+.tm.cleanup .tile.k-safe { --bg-c: var(--good-bg); --bd: var(--good); --fg: var(--good); }
+.tm.cleanup .tile.k-review { --bg-c: var(--warn-bg); --bd: var(--warn); --fg: var(--warn); }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 14px 12px; font-size: 11.5px; color: var(--ink2); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; border: 1px solid var(--bd); background: var(--bg-c); display: inline-block; position: relative; overflow: hidden; }
+.legend i.h { background: repeating-linear-gradient(135deg, var(--bd) 0 1.5px, var(--bg-c) 1.5px 4px); }
+
+/* recommendations */
+.recs { overflow-y: auto; flex: 1; padding: 0 8px 8px; min-height: 0; }
+.sec { display: flex; justify-content: space-between; align-items: center; padding: 10px 6px 6px; position: sticky; top: 0; background: var(--panel); z-index: 2; }
+.pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+.pill.safe { color: var(--good); background: var(--good-bg); }
+.pill.review { color: var(--warn); background: var(--warn-bg); }
+.sec .t { font-size: 12px; color: var(--ink2); font-weight: 560; }
+.item { border-radius: 8px; padding: 7px 6px; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 16px; gap: 2px 6px; align-items: start; }
+.item:hover { background: var(--chip); }
+.item .lab { font-weight: 560; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .lab:hover { text-decoration: underline; text-decoration-color: var(--ink3); text-underline-offset: 2px; }
+.item .pth { grid-column: 2 / 4; color: var(--ink3); font-size: 11.5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .note { grid-column: 2 / 4; color: var(--ink2); font-size: 11.5px; }
+.item .s { font-weight: 600; text-align: right; }
+.item .chev { cursor: pointer; color: var(--ink3); text-align: center; user-select: none; transition: transform .15s; line-height: 18px; }
+.item.open .chev { transform: rotate(90deg); }
+.item .more { grid-column: 2 / 5; display: none; margin-top: 4px; border-left: 2px solid var(--line); padding-left: 8px; }
+.item.open .more { display: block; }
+.more .row { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; gap: 6px; padding: 2px 0; font-size: 11.5px; align-items: center; }
+.more .row span:nth-child(2) { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.more .row span:nth-child(3) { color: var(--ink2); }
+.more .row em.d { grid-column: 2 / 4; font-style: normal; font-size: 11px; color: var(--ink3); margin-top: -2px; }
+input[type=checkbox] { width: 15px; height: 15px; margin: 2px 0 0; accent-color: var(--accent); cursor: pointer; }
+.more input[type=checkbox] { width: 13px; height: 13px; margin: 0; }
+
+.foot { border-top: 1px solid var(--line); padding: 10px 12px 12px; }
+.foot .sum { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.foot .sum b { font-size: 16px; letter-spacing: -.01em; }
+.foot .sum span { color: var(--ink2); font-size: 12px; }
+.btns { display: flex; gap: 6px; }
+.btn { border: 1px solid var(--line2); background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; font-weight: 560; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.btn:hover { background: var(--chip); }
+.btn.pri { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); margin-left: auto; }
+.btn.pri:hover { opacity: .88; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.sm { padding: 4px 10px; font-size: 12px; margin-top: 5px; }
+.btn.sm:disabled { opacity: .7; }
+.prog.ind i { width: 30% !important; animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn.danger:hover { opacity: .88; background: var(--bad); }
+.foot .btn.danger { margin-left: auto; }
+.cbody { padding: 0 16px; font-size: 13px; }
+.cbody p { margin: 0 0 8px; color: var(--ink2); }
+.cbody p.warn { color: var(--warn); }
+.clist { list-style: none; padding: 0; margin: 8px 0 10px; max-height: 40vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.clist li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 10px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.clist li:first-child { border-top: 0; }
+.clist li.review span { color: var(--warn); }
+.clist em, .plog em { font-style: normal; color: var(--ink3); margin-left: 4px; }
+.prog { height: 6px; background: var(--chip); border-radius: 99px; overflow: hidden; margin: 4px 0 8px; }
+.prog i { display: block; height: 100%; width: 0; background: var(--good); transition: width .2s; }
+.pnow { font-size: 12.5px; color: var(--ink2); margin-bottom: 8px; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plog { max-height: 300px; overflow: auto; font: 11.5px/1.65 ui-monospace, "SF Mono", Menlo, monospace; background: var(--chip); border-radius: 10px; padding: 8px 10px; }
+.plog div { display: flex; justify-content: space-between; gap: 10px; }
+.plog span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plog span:last-child { flex-shrink: 0; color: var(--ink3); }
+.plog .bad, .plog .bad span:last-child { color: var(--bad); white-space: normal; }
+
+#tip { position: fixed; pointer-events: none; z-index: 50; background: var(--ink); color: var(--bg); border-radius: 8px; padding: 7px 9px; font-size: 12px;
+  max-width: 340px; opacity: 0; transition: opacity .08s; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+#tip b { display: block; font-weight: 620; }
+#tip .p { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; opacity: .7; word-break: break-all; }
+#tip .r { margin-top: 3px; font-size: 11.5px; }
+
+dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(820px, 94vw); background: var(--panel); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+dialog .dh { padding: 14px 16px 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+dialog .dh h3 { margin: 0; font-size: 15px; }
+dialog pre { margin: 0 16px; padding: 12px 14px; background: var(--chip); border-radius: 10px; max-height: 58vh; overflow: auto; font: 11.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; }
+dialog .df { padding: 12px 16px 14px; display: flex; gap: 8px; align-items: center; }
+dialog .df p { margin: 0; color: var(--ink2); font-size: 12px; flex: 1; }
+dialog .df p code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+#toast { position: fixed; bottom: 22px; left: 50%; transform: translate(-50%, 20px); background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 10px;
+  font-size: 12.5px; opacity: 0; transition: all .2s; pointer-events: none; z-index: 60; }
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 960px) {
+  .main { grid-template-columns: 1fr; height: auto; }
+  .tm { height: 62vh; flex: none; }
+  .recs { max-height: 60vh; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .meta { text-align: left; }
+}
+@media (max-width: 520px) { .wrap { padding: 14px 16px; } .stat .val { font-size: 20px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Disk Map</h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <div class="meta" id="meta"></div>
+  </header>
+  <div class="diskbar" id="diskbar" title=""></div>
+  <section class="stats" id="stats"></section>
+
+  <section class="main">
+    <div class="card">
+      <div class="card-h">
+        <div>
+          <h2>Explorer</h2>
+          <div class="sub">Your home folder, sized by space used. Click a tile to open it.</div>
+        </div>
+        <div class="seg" id="mode">
+          <button data-m="category" class="on">Category</button>
+          <button data-m="cleanup">Cleanup</button>
+        </div>
+      </div>
+      <nav class="crumbs" id="crumbs"></nav>
+      <div class="tm" id="tm"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <aside class="card">
+      <div class="card-h">
+        <div>
+          <h2>Recommendations</h2>
+          <div class="sub" id="recSub">Select items to build a cleanup script.</div>
+        </div>
+      </div>
+      <div class="recs" id="recs"></div>
+      <div class="foot">
+        <div class="sum"><b id="selTotal">0 GB</b><span id="selCount">nothing selected</span></div>
+        <div class="btns">
+          <button class="btn" id="bSafe">Select safe</button>
+          <button class="btn" id="bClear">Clear</button>
+          <button class="btn" id="bView">View script</button>
+          <button class="btn pri" id="bCopy">Copy script</button>
+          <button class="btn danger" id="bClean" hidden>Clean now</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+</div>
+
+<dialog id="cdlg">
+  <div class="dh"><h3 id="cTitle"></h3></div>
+  <div class="cbody" id="cBody"></div>
+  <div class="df"><p></p><button class="btn" id="cCancel">Cancel</button><button class="btn danger" id="cGo">Delete</button></div>
+</dialog>
+<div id="tip"></div>
+<div id="toast"></div>
+<dialog id="dlg">
+  <div class="dh"><h3>Cleanup script</h3><button class="btn" id="dClose">Close</button></div>
+  <pre id="script"></pre>
+  <div class="df">
+    <p>Nothing runs until you do. Paste into Terminal, or save it and run <code>bash ~/Downloads/cleanup.sh</code>.</p>
+    <button class="btn" id="dDl">Download .sh</button>
+    <button class="btn pri" id="dCopy">Copy</button>
+  </div>
+</dialog>
+
+<script>
+const DATA = /*__DATA__*/null;
+const API_TOKEN = /*__TOKEN__*/null;   // set when served by `python3 diskmap.py`; enables Clean now
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = b => {
+  if (b >= 1e9) return (b / 1e9).toFixed(b >= 100e9 ? 0 : 1) + " GB";
+  if (b >= 1e6) return Math.round(b / 1e6) + " MB";
+  return Math.round(b / 1e3) + " KB";
+};
+const fmtN = b => fmt(b).split(" ");
+const CATS = { dev: "Code & dependencies", cache: "Caches & temp", apps: "App data", media: "Media", docs: "Documents & downloads",
+               sdk: "SDKs, VMs & toolchains", ai: "AI models", other: "Other" };
+// remove the folder itself (vs. only its contents) for these recommendation types
+const REMOVE_DIR = new Set(DATA.recs.filter(r => r.mode === "dir" || r.mode === "worktree").map(r => r.id));
+const CMD_ONLY = new Set(DATA.recs.filter(r => r.mode === "cmd").map(r => r.id));
+
+/* ---------------- state ---------------- */
+const store = { get(k, d) { try { const v = localStorage.getItem("diskmap:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+                set(k, v) { try { localStorage.setItem("diskmap:" + k, JSON.stringify(v)); } catch {} } };
+const recById = Object.fromEntries(DATA.recs.map(r => [r.id, r]));
+const pathRec = new Map();              // rel path -> rec
+DATA.recs.forEach(r => r.paths.forEach(p => pathRec.set(p.p, r)));
+const scanKey = DATA.scannedAt;
+let selected = new Set(store.get("sel:" + scanKey, null) ||
+  DATA.recs.filter(r => r.kind === "safe").flatMap(r => r.paths.map(p => p.p)));
+let mode = store.get("mode", "category");
+let focus = DATA.tree;
+let hotRec = null;
+const parentOf = new Map();
+(function index(n) { (n.c || []).forEach(c => { parentOf.set(c, n); index(c); }); })(DATA.tree);
+
+function recFor(path) {             // rec whose path equals or contains `path`
+  if (!path) return null;
+  let p = path;
+  while (true) {
+    const r = pathRec.get(p);
+    if (r) return { rec: r, root: p };
+    const i = p.lastIndexOf("/");
+    if (i < 0) return null;
+    p = p.slice(0, i);
+  }
+}
+const recSize = (r, onlySel) => r.paths.reduce((a, p) => a + (!onlySel || selected.has(p.p) ? p.s : 0), 0);
+const selBytes = () => DATA.recs.reduce((a, r) => a + recSize(r, true), 0);
+
+/* ---------------- header / stats ---------------- */
+function renderHeader() {
+  const d = DATA.disk, when = new Date(DATA.scannedAt);
+  $("#subtitle").textContent = `${fmt(d.used)} of ${fmt(d.total)} used · ${fmt(d.free)} free`;
+  $("#meta").innerHTML = `Scanned ${when.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} · ${esc(DATA.home)}<br>` +
+    (API_TOKEN ? `<button class="btn sm" id="bRescan">↻ Rescan</button>` : `Rescan: <code>python3 diskmap.py</code>`);
+}
+function renderStats() {
+  const d = DATA.disk, sel = selBytes();
+  const safe = DATA.recs.filter(r => r.kind === "safe"), rev = DATA.recs.filter(r => r.kind === "review");
+  const sum = a => a.reduce((x, r) => x + r.size, 0);
+  const notScanned = Math.max(0, d.used - DATA.homeSize);
+  const card = (lbl, dot, val, small, up) => {
+    const [n, u] = fmtN(val);
+    return `<div class="stat"><div class="lbl">${dot ? `<i style="background:${dot}"></i>` : ""}${lbl}</div>
+      <div class="val">${n} ${u}<small class="${up ? "up" : ""}">${small}</small></div></div>`;
+  };
+  $("#stats").innerHTML =
+    card("Free after cleanup", "", d.free + sel, sel ? "+" + fmt(sel) : "select items →", true) +
+    card("Safe to remove", "var(--good)", sum(safe), `${safe.length} items`) +
+    card("Needs review", "var(--warn)", sum(rev), `${rev.length} items`) +
+    card("Not scanned", "var(--ink3)", notScanned, "system & apps");
+  const pct = v => (100 * v / d.total).toFixed(2) + "%";
+  const safeSel = DATA.recs.filter(r => r.kind === "safe").reduce((a, r) => a + recSize(r, true), 0);
+  const revSel = sel - safeSel;
+  $("#diskbar").innerHTML = `<span class="sys" style="width:${pct(notScanned)}"></span><span class="home" style="width:${pct(DATA.homeSize - sel)}"></span>` +
+    `<span class="rev" style="width:${pct(revSel)}"></span><span class="safe" style="width:${pct(safeSel)}"></span>`;
+  $("#diskbar").title = `System & apps ${fmt(notScanned)} · Home ${fmt(DATA.homeSize)} · Selected for cleanup ${fmt(sel)} · Free ${fmt(d.free)}`;
+}
+
+/* ---------------- treemap ---------------- */
+function worst(sum, mn, mx, side) { const s2 = side * side, q = sum * sum; return Math.max(s2 * mx / q, q / (s2 * mn)); }
+function squarify(items, x, y, w, h) {
+  items = items.filter(n => n.s > 0);
+  const total = items.reduce((a, n) => a + n.s, 0), out = [];
+  if (!total || w <= 0 || h <= 0) return out;
+  const k = w * h / total;
+  let i = 0;
+  while (i < items.length) {
+    const side = Math.min(w, h);
+    let sum = items[i].s * k, mn = sum, mx = sum, cur = worst(sum, mn, mx, side), j = i + 1;
+    while (j < items.length) {
+      const a = items[j].s * k, ns = sum + a, nmn = Math.min(mn, a), nmx = Math.max(mx, a), nw = worst(ns, nmn, nmx, side);
+      if (nw > cur) break;
+      sum = ns; mn = nmn; mx = nmx; cur = nw; j++;
+    }
+    const thick = sum / side;
+    let off = 0;
+    for (let t = i; t < j; t++) {
+      const len = items[t].s * k / thick;
+      out.push(w >= h ? { n: items[t], x, y: y + off, w: thick, h: len } : { n: items[t], x: x + off, y, w: len, h: thick });
+      off += len;
+    }
+    if (w >= h) { x += thick; w -= thick; } else { y += thick; h -= thick; }
+    i = j;
+  }
+  return out;
+}
+
+const GAP = 3, HDR = 20, MAXD = 3;
+function tileClasses(n) {
+  const cls = ["tile", "c-" + n.k];
+  const hit = recFor(n.x ? null : n.p);
+  if (hit) {
+    cls.push("k-" + hit.rec.kind);
+    if (selected.has(hit.root)) cls.push("hatch"); else if (mode === "cleanup") cls.push("flag");
+  }
+  if (n.x) cls.push("rest");
+  if (n.f) cls.push("file");
+  return { cls, hit };
+}
+// Folders that are ~all one subfolder (Developer › PAST › Projects) render as a single tile.
+function collapse(n) {
+  let label = n.n;
+  while (n.c && !recFor(n.p)) {
+    const real = n.c.filter(c => !c.x);
+    if (real.length !== 1 || real[0].s < 0.9 * n.s || !real[0].c) break;
+    n = real[0]; label += " › " + n.n;
+  }
+  return { n, label };
+}
+function placeTile(parent, r, depth) {
+  const { n, label } = r.n.x || r.n.f ? { n: r.n, label: r.n.n } : collapse(r.n);
+  const w = r.w - GAP, h = r.h - GAP;
+  if (w < 3 || h < 3) return;
+  const { cls, hit } = tileClasses(n);
+  const el = document.createElement("div");
+  const canGroup = n.c && n.c.length && (depth < MAXD || (depth < MAXD + 3 && w * h > 50000)) && w > 90 && h > 64 && !hit;
+  cls.push(canGroup ? "group" : "leaf");
+  if (!canGroup && w > 150 && h > 90) cls.push("big");
+  el.className = cls.join(" ");
+  el.style.cssText = `left:${r.x}px;top:${r.y}px;width:${w}px;height:${h}px;--cbg:var(--c-${n.k}-bg);--cbd:var(--c-${n.k}-bd);--cfg:var(--c-${n.k}-fg)`;
+  el._node = n;
+  if (canGroup) {
+    el.innerHTML = `<div class="hd"><span>${esc(label)}</span><span>${fmt(n.s)}</span></div>`;
+    for (const cr of squarify(n.c, GAP, HDR, w - GAP * 2 + GAP, h - HDR - GAP + GAP)) placeTile(el, cr, depth + 1);
+  } else {
+    let html = "";
+    if (h > 18 && w > 34) html += `<div class="nm">${esc(n.x ? "smaller items" : label)}</div>`;
+    if (h > 40 && w > 44) html += `<div class="sz">${fmt(n.s)}</div>`;
+    el.innerHTML = html;
+  }
+  parent.appendChild(el);
+}
+function renderTreemap() {
+  const tm = $("#tm");
+  tm.className = "tm " + mode + (hotRec ? " dim" : "");
+  tm.innerHTML = "";
+  const { width, height } = tm.getBoundingClientRect();
+  const kids = focus.c && focus.c.length ? focus.c : [focus];
+  for (const r of squarify(kids, 0, 0, width + GAP, height + GAP)) placeTile(tm, r, 1);
+  if (hotRec) highlight(hotRec);
+  renderCrumbs();
+  renderLegend();
+}
+function renderCrumbs() {
+  const chain = [];
+  for (let n = focus; n; n = parentOf.get(n)) chain.unshift(n);
+  $("#crumbs").innerHTML = chain.map((n, i) =>
+    `<a data-i="${i}" class="${i === chain.length - 1 ? "cur" : ""}">${esc(i ? n.n : "~ Home")}</a>`).join('<span class="sep">/</span>') +
+    `<span class="tot">${fmt(focus.s)}</span>`;
+  $("#crumbs").querySelectorAll("a").forEach(a => a.onclick = () => { focus = chain[+a.dataset.i]; renderTreemap(); });
+}
+function renderLegend() {
+  if (mode === "category") {
+    const used = new Set(); (function walk(n, d) { used.add(n.k); if (d < 3) (n.c || []).forEach(c => walk(c, d + 1)); })(focus, 0);
+    $("#legend").innerHTML = Object.entries(CATS).filter(([k]) => used.has(k)).map(([k, v]) =>
+      `<span><i style="--bg-c:var(--c-${k}-bg);--bd:var(--c-${k}-bd)"></i>${v}</span>`).join("") +
+      `<span><i class="h" style="--bg-c:var(--panel);--bd:var(--ink3)"></i>Selected for cleanup</span>`;
+  } else {
+    $("#legend").innerHTML = `<span><i style="--bg-c:var(--good-bg);--bd:var(--good)"></i>Safe to remove</span>
+      <span><i style="--bg-c:var(--warn-bg);--bd:var(--warn)"></i>Needs review</span>
+      <span><i class="h" style="--bg-c:var(--panel);--bd:var(--ink3)"></i>Selected</span>
+      <span><i style="--bg-c:var(--mute-bg);--bd:var(--mute-bd)"></i>Keep</span>`;
+  }
+}
+function highlight(rec) {
+  document.querySelectorAll(".tile.hot").forEach(t => t.classList.remove("hot"));
+  if (!rec) return;
+  document.querySelectorAll(".tile").forEach(t => {
+    const n = t._node; if (!n || n.x) return;
+    const hit = recFor(n.p);
+    if (hit && hit.rec === rec) t.classList.add("hot");
+  });
+}
+
+/* tooltip + clicks */
+const tip = $("#tip");
+$("#tm").addEventListener("mousemove", e => {
+  const t = e.target.closest(".tile"); if (!t) { tip.style.opacity = 0; return; }
+  const n = t._node, par = parentOf.get(n) || focus, hit = n.x ? null : recFor(n.p);
+  tip.innerHTML = `<b>${esc(n.x ? "Smaller items in " + (par.n || "~") : n.n)}</b>${fmt(n.s)}` +
+    (par && par.s ? ` · ${(100 * n.s / par.s).toFixed(1)}% of ${esc(par.n)}` : "") +
+    `<div class="p">~/${esc(n.p)}</div>` +
+    (hit ? `<div class="r">${hit.rec.kind === "safe" ? "✓ Safe to remove" : "⚠︎ Needs review"} · ${esc(hit.rec.label)}</div>` : "") +
+    (n.c && !n.x ? `<div class="r" style="opacity:.6">Click to open</div>` : "");
+  tip.style.opacity = 1;
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+});
+$("#tm").addEventListener("mouseleave", () => tip.style.opacity = 0);
+$("#tm").addEventListener("click", e => {
+  let t = e.target.closest(".tile"); if (!t) return;
+  // clicking inside a group header opens the group; clicking a child opens the child
+  let n = t._node;
+  // leaves open their enclosing group; "smaller items" open their parent
+  while (n && !(n.c && n.c.length && !n.x)) { t = t.parentElement.closest(".tile"); n = t ? t._node : null; }
+  if (n && n.c && n.c.length && n !== focus) { focus = n; tip.style.opacity = 0; renderTreemap(); }
+});
+$("#mode").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  mode = b.dataset.m; store.set("mode", mode);
+  document.querySelectorAll("#mode button").forEach(x => x.classList.toggle("on", x === b));
+  renderTreemap();
+});
+
+/* ---------------- recommendations ---------------- */
+const openItems = new Set();
+function renderRecs() {
+  const sec = (kind, title) => {
+    const list = DATA.recs.filter(r => r.kind === kind);
+    if (!list.length) return "";
+    const tot = list.reduce((a, r) => a + r.size, 0);
+    return `<div class="sec"><span class="pill ${kind}">${title}</span><span class="t">${fmt(tot)}</span></div>` + list.map(itemHTML).join("");
+  };
+  $("#recs").innerHTML = sec("safe", "Safe to remove") + sec("review", "Needs review") ||
+    `<p style="padding:16px;color:var(--ink2)">Nothing big to clean up. Nice.</p>`;
+  DATA.recs.forEach(r => {
+    const cb = document.getElementById("cb-" + r.id); if (!cb) return;
+    const n = r.paths.filter(p => selected.has(p.p)).length;
+    cb.checked = n === r.paths.length; cb.indeterminate = n > 0 && n < r.paths.length;
+  });
+}
+function itemHTML(r) {
+  const one = r.paths.length === 1;
+  const common = commonDir(r.paths.map(p => p.p));
+  const tops = [...new Set(r.paths.map(p => p.p.split("/")[0]))];
+  const pth = one ? "~/" + r.paths[0].p : `${r.paths.length} items · ` + (common ? "~/" + common : tops.slice(0, 3).map(t => "~/" + t).join(", ") + (tops.length > 3 ? "…" : ""));
+  const rows = r.paths.slice(0, 300).map(p => `<label class="row"><input type="checkbox" data-p="${esc(p.p)}" ${selected.has(p.p) ? "checked" : ""}>
+      <span title="~/${esc(p.p)}">&lrm;~/${esc(p.p)}&lrm;</span><span>${fmt(p.s)}</span>${p.d ? `<em class="d">${esc(p.d)}</em>` : ""}</label>`).join("") +
+    (r.paths.length > 300 ? `<div class="row"><span></span><span>+${r.paths.length - 300} more (included when the item is checked)</span></div>` : "");
+  return `<div class="item ${openItems.has(r.id) ? "open" : ""}" data-id="${r.id}">
+    <input type="checkbox" id="cb-${r.id}">
+    <span class="lab" title="Show in explorer">${esc(r.label)}</span>
+    <span class="s">${fmt(r.size)}</span>
+    <span class="chev" title="Details">›</span>
+    <span class="pth">${esc(pth)}</span>
+    <div class="more"><div class="note" style="margin-bottom:4px">${esc(r.note)}${r.cmd ? ` <span style="opacity:.7">Uses <code>${esc(r.cmd.replace(/^command -v \S+ >\/dev\/null && /, ""))}</code>.</span>` : ""}</div>${rows}</div>
+  </div>`;
+}
+function commonDir(paths) {
+  if (!paths.length) return "";
+  let parts = paths[0].split("/");
+  for (const p of paths) { const q = p.split("/"); let i = 0; while (i < parts.length && parts[i] === q[i]) i++; parts = parts.slice(0, i); }
+  return parts.length ? parts.join("/") + "/…" : "";
+}
+$("#recs").addEventListener("change", e => {
+  const cb = e.target; const item = cb.closest(".item"); const r = recById[item.dataset.id];
+  if (cb.dataset.p) { cb.checked ? selected.add(cb.dataset.p) : selected.delete(cb.dataset.p); }
+  else r.paths.forEach(p => cb.checked ? selected.add(p.p) : selected.delete(p.p));
+  changed();
+});
+$("#recs").addEventListener("click", e => {
+  const item = e.target.closest(".item"); if (!item) return;
+  const r = recById[item.dataset.id];
+  if (e.target.classList.contains("chev")) { openItems.has(r.id) ? openItems.delete(r.id) : openItems.add(r.id); item.classList.toggle("open"); }
+  if (e.target.classList.contains("lab")) reveal(r);
+});
+$("#recs").addEventListener("mouseover", e => {
+  const item = e.target.closest(".item"); const r = item ? recById[item.dataset.id] : null;
+  if (r !== hotRec) { hotRec = r; $("#tm").classList.toggle("dim", !!r && document.querySelector(".tile") != null && anyVisible(r)); highlight(r); }
+});
+$("#recs").addEventListener("mouseleave", () => { hotRec = null; $("#tm").classList.remove("dim"); highlight(null); });
+function anyVisible(r) { return [...document.querySelectorAll(".tile")].some(t => t._node && !t._node.x && recFor(t._node.p)?.rec === r); }
+function reveal(r) {
+  // open the deepest tree node that contains the rec's biggest path
+  const target = r.paths[0].p;
+  let best = DATA.tree;
+  (function walk(n) { for (const c of n.c || []) if (!c.x && c.c && (target === c.p || target.startsWith(c.p + "/"))) { best = c; walk(c); } })(DATA.tree);
+  if (best.p === target && parentOf.get(best)) best = parentOf.get(best);
+  focus = best; renderTreemap(); hotRec = r; highlight(r);
+}
+$("#bSafe").onclick = () => { DATA.recs.filter(r => r.kind === "safe").forEach(r => r.paths.forEach(p => selected.add(p.p))); changed(); };
+$("#bClear").onclick = () => { selected.clear(); changed(); };
+
+function changed() {
+  store.set("sel:" + scanKey, [...selected]);
+  const sel = selBytes(), n = DATA.recs.filter(r => recSize(r, true) > 0).length;
+  $("#selTotal").textContent = fmt(sel);
+  $("#selCount").textContent = n ? `${n} item${n > 1 ? "s" : ""} selected` : "nothing selected";
+  $("#bCopy").disabled = $("#bView").disabled = $("#bClean").disabled = !n;
+  renderRecs(); renderStats(); renderTreemap();
+}
+
+/* ---------------- script ---------------- */
+const sq = s => "'" + s.replace(/'/g, "'\\''") + "'";
+function buildScript() {
+  const home = DATA.home, sel = selBytes();
+  const L = [
+    "#!/bin/bash",
+    `# Disk Map cleanup script — generated ${new Date().toLocaleString()}`,
+    `# Scan from ${DATA.scannedAt}. Frees about ${fmt(sel)}. Read it before running.`,
+    "set -u",
+    "",
+    `HOME_DIR=${sq(home)}`,
+    'before=$(df -k / | awk \'NR==2{print $4}\')',
+    "",
+    "# Delete a path inside your home folder. mode=dir removes the folder, mode=contents empties it.",
+    "clean() {",
+    '  local p="$1" mode="${2:-contents}"',
+    '  case "$p" in "$HOME_DIR"/?*) ;; *) echo "  skipped (outside home): $p"; return ;; esac',
+    '  [ -e "$p" ] || { echo "  already gone: ${p#$HOME_DIR/}"; return; }',
+    '  if [ -d "$p" ] && [ ! -L "$p" ]; then',
+    '    if [ "$mode" = dir ]; then rm -rf "$p"; else find "$p" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null; fi',
+    '  else rm -f "$p"; fi',
+    '  echo "  ✓ ${p#$HOME_DIR/}"',
+    "}",
+    "",
+    `echo "This permanently deletes the items below (~${fmt(sel)})."`,
+    'read -r -p "Continue? [y/N] " ok',
+    '[[ "$ok" == [yY]* ]] || { echo "Cancelled."; exit 1; }',
+    "",
+  ];
+  for (const r of DATA.recs) {
+    const ps = r.paths.filter(p => selected.has(p.p));
+    if (!ps.length) continue;
+    const all = ps.length === r.paths.length;
+    L.push(`# ${r.label} — ${fmt(ps.reduce((a, p) => a + p.s, 0))}`, `echo "${r.label.replace(/["$`\\]/g, "")}"`);
+    if (r.cmd && all) {
+      L.push(CMD_ONLY.has(r.id) ? r.cmd : `${r.cmd} || clean ${sq(home + "/" + r.paths[0].p)}`);
+      if (!CMD_ONLY.has(r.id)) for (const p of ps.slice(1)) L.push(`clean ${sq(home + "/" + p.p)} ${REMOVE_DIR.has(r.id) ? "dir" : ""}`.trim());
+    } else if (CMD_ONLY.has(r.id)) {
+      L.push(r.cmd);
+    } else {
+      for (const p of ps) L.push(p.c ? `${p.c} || echo "  could not remove ${p.p.replace(/["$`\\]/g, "")}"` : `clean ${sq(home + "/" + p.p)}${REMOVE_DIR.has(r.id) ? " dir" : ""}`);
+    }
+    L.push("");
+  }
+  L.push('after=$(df -k / | awk \'NR==2{print $4}\')',
+         'echo; echo "Done. Freed $(( (after - before) / 1024 / 1024 )) GB · $(( after / 1024 / 1024 )) GB free now."');
+  return L.join("\n") + "\n";
+}
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+  toast("Copied — paste it into Terminal to run");
+}
+function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("on"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("on"), 2200); }
+$("#bCopy").onclick = () => copy(buildScript());
+$("#bView").onclick = () => { $("#script").textContent = buildScript(); $("#dlg").showModal(); };
+$("#dClose").onclick = () => $("#dlg").close();
+$("#dCopy").onclick = () => copy($("#script").textContent);
+$("#dDl").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([$("#script").textContent], { type: "text/x-shellscript" }));
+  a.download = "cleanup.sh"; a.click(); URL.revokeObjectURL(a.href);
+};
+
+/* ---------------- clean now (only when served by diskmap.py) ---------------- */
+let cleaning = false, cleanFinished = false;
+const selectedJobs = () => DATA.recs.map(r => ({ r, ps: r.paths.filter(p => selected.has(p.p)) })).filter(j => j.ps.length);
+const jobBytes = j => j.ps.reduce((a, p) => a + p.s, 0);
+
+function openClean() {
+  const jobs = selectedJobs(); if (!jobs.length) return;
+  const total = jobs.reduce((a, j) => a + jobBytes(j), 0), n = jobs.reduce((a, j) => a + j.ps.length, 0);
+  const rev = jobs.filter(j => j.r.kind === "review");
+  $("#cTitle").textContent = `Delete ${fmt(total)}?`;
+  $("#cBody").innerHTML =
+    `<p>${n} item${n > 1 ? "s" : ""} will be permanently deleted. They skip the Trash and can't be restored.</p>` +
+    `<ul class="clist">${jobs.map(j => `<li class="${j.r.kind}"><span>${j.r.kind === "review" ? "⚠︎ " : ""}${esc(j.r.label)}` +
+      `${j.ps.length > 1 ? `<em>${j.ps.length} items</em>` : ""}</span><b>${fmt(jobBytes(j))}</b></li>`).join("")}</ul>` +
+    (rev.length ? `<p class="warn">⚠︎ You selected ${rev.length} “needs review” item${rev.length > 1 ? "s" : ""}. ` +
+      (rev.some(j => j.r.id === "wt_review") ? "Worktrees with uncommitted changes lose that work. " : "") +
+      `Expand them in the list first if you're not sure.</p>` : "");
+  $("#cGo").textContent = `Delete ${fmt(total)}`;
+  $("#cGo").hidden = false; $("#cCancel").hidden = false; $("#cCancel").textContent = "Cancel";
+  cleanFinished = false;
+  $("#cdlg").showModal();
+  $("#cCancel").focus();
+}
+
+function onCleanEvent(st, ev) {
+  if (ev.start != null) { st.total = ev.start; return; }
+  if (ev.working) { $("#pNow").textContent = `${ev.label} · ~/${ev.p}`; return; }
+  if (ev.refreshing) { $("#pNow").textContent = "Updating the map…"; return; }
+  if (ev.done) { st.done = ev; return; }
+  if (ev.ok == null) return;
+  st.n++;
+  if (ev.ok) { st.removed += ev.freed || 0; selected.delete(ev.p); } else st.fails++;
+  const row = document.createElement("div");
+  row.className = ev.ok ? "" : "bad";
+  row.innerHTML = `<span>${ev.ok ? "✓" : "✗"} ~/${esc(ev.p)}</span><span>${ev.ok ? fmt(ev.freed || 0) : esc(ev.error || "failed")}</span>`;
+  const log = $("#pLog"); log.appendChild(row); log.scrollTop = log.scrollHeight;
+  $("#pBar").style.width = (100 * st.n / Math.max(1, st.total)) + "%";
+  $("#pNow").textContent = `${st.n} of ${st.total} done · ${fmt(st.removed)} removed`;
+}
+
+async function runClean() {
+  const paths = selectedJobs().flatMap(j => j.ps.map(p => p.p));
+  cleaning = true;
+  $("#cGo").hidden = true; $("#cCancel").hidden = true;
+  $("#cTitle").textContent = "Cleaning…";
+  $("#cBody").innerHTML = `<div class="prog"><i id="pBar"></i></div><div class="pnow" id="pNow">Starting…</div><div class="plog" id="pLog"></div>`;
+  const st = { total: paths.length, n: 0, removed: 0, fails: 0, done: null };
+  try {
+    const res = await fetch("/api/clean", { method: "POST", body: JSON.stringify({ paths }),
+      headers: { "Content-Type": "application/json", "X-Diskmap-Token": API_TOKEN } });
+    if (!res.ok) throw new Error(res.status === 409 ? "Another cleanup is already running." : `Server said ${res.status}. Is diskmap.py still running?`);
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let k;
+      while ((k = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, k); buf = buf.slice(k + 1); if (line) onCleanEvent(st, JSON.parse(line)); }
+    }
+  } catch (e) {
+    st.error = e.message === "Failed to fetch" ? "Lost connection to diskmap.py. Is it still running?" : e.message;
+  }
+  cleaning = false; cleanFinished = true;
+  store.set("sel:" + scanKey, [...selected]);
+  $("#cTitle").textContent = st.done ? `Removed ${fmt(st.removed)}` : "Cleanup stopped";
+  let msg = st.done ? `${fmt(st.done.free)} free now.` : esc(st.error || "The connection closed early.");
+  if (st.fails) msg += ` ${st.fails} item${st.fails > 1 ? "s" : ""} failed (in red below).`;
+  if (st.done && st.done.freed < st.removed * 0.5)
+    msg += " If free space looks low, macOS may still be holding the deleted files in local Time Machine snapshots. It releases them on its own.";
+  $("#pNow").textContent = ""; $("#pNow").insertAdjacentHTML("afterbegin", msg);
+  $("#pNow").style.whiteSpace = "normal";
+  $("#pBar").style.width = "100%";
+  $("#cCancel").hidden = false; $("#cCancel").textContent = "Done";
+}
+
+$("#bClean").onclick = openClean;
+$("#cGo").onclick = runClean;
+$("#cCancel").onclick = () => { if (cleaning) return; if (cleanFinished) location.reload(); else $("#cdlg").close(); };
+$("#cdlg").addEventListener("cancel", e => { if (cleaning) e.preventDefault(); else if (cleanFinished) location.reload(); });
+if (API_TOKEN) {
+  $("#bClean").hidden = false;
+  $("#bCopy").hidden = true;
+  $("#bView").textContent = "Script";
+  $("#recSub").textContent = "Select items, then clean them right here.";
+}
+
+/* ---------------- rescan (runs on the server; this page just polls) ---------------- */
+let rescanDlg = false, polling = null;
+const api = (path, opts = {}) => fetch(path, { ...opts, headers: { "X-Diskmap-Token": API_TOKEN, ...(opts.headers || {}) } });
+const dur = s => s >= 60 ? `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, "0")}s` : `${Math.round(s)}s`;
+
+async function startRescan() {
+  const res = await api("/api/rescan", { method: "POST" }).catch(() => null);
+  if (!res) return toast("Can't reach diskmap.py. Is it still running?");
+  if (res.status === 409) return toast("A cleanup or rescan is already running");
+  showRescan(); watchRescan();
+}
+function showRescan() {
+  rescanDlg = true;
+  $("#cTitle").textContent = "Rescanning your home folder";
+  $("#cBody").innerHTML = `<div class="prog" id="rProg"><i id="pBar"></i></div><div class="pnow" id="pNow">Starting…</div>` +
+    `<p>The scan keeps running if you close this or the tab. The map reloads by itself when it's done.</p>`;
+  $("#cGo").hidden = true; $("#cCancel").hidden = false; $("#cCancel").textContent = "Hide";
+  if (!$("#cdlg").open) $("#cdlg").showModal();
+}
+function renderRescan(j) {
+  const b = $("#bRescan");
+  const pct = j.expectDirs ? Math.min(99, Math.round(100 * (j.dirs || 0) / j.expectDirs)) : null;
+  if (b) { b.disabled = j.running; b.textContent = j.running ? `Rescanning… ${pct != null && j.phase === "scanning" ? pct + "%" : ""}` : "↻ Rescan"; }
+  if (!rescanDlg || !$("#pNow")) return;
+  const prog = $("#rProg");
+  prog.classList.toggle("ind", pct == null || j.phase !== "scanning");
+  if (pct != null) $("#pBar").style.width = pct + "%";
+  $("#pNow").textContent = j.phase === "analyzing" ? "Working out recommendations…"
+    : j.phase === "error" ? "Rescan failed: " + j.error
+    : `${(j.dirs || 0).toLocaleString()} folders · ${dur(j.secs || 0)}` + (j.expectSecs ? ` · last scan took ${dur(j.expectSecs)}` : "");
+}
+function watchRescan() {
+  clearInterval(polling);
+  polling = setInterval(async () => {
+    const j = await api("/api/status").then(r => r.json()).catch(() => null);
+    if (!j) return;
+    renderRescan(j);
+    if (!j.running) {
+      clearInterval(polling);
+      if (j.phase === "done") { toast("Scan complete, reloading"); setTimeout(() => location.reload(), 600); }
+    }
+  }, 1000);
+}
+if (API_TOKEN) {
+  $("#cdlg").addEventListener("close", () => { rescanDlg = false; });
+  document.addEventListener("click", e => { if (e.target.id === "bRescan") startRescan(); });
+  // pick up a rescan already in progress (e.g. after a reload)
+  api("/api/status").then(r => r.json()).then(j => { if (j.running) { renderRescan(j); watchRescan(); } }).catch(() => {});
+}
+
+/* ---------------- boot ---------------- */
+document.querySelectorAll("#mode button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
+renderHeader();
+changed();
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderTreemap, 80); });
+</script>
+</body>
+</html>
