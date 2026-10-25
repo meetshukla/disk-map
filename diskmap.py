@@ -42,7 +42,7 @@ KEEP_KB, TREE_MIN, REC_MIN = int(KEEP_KB * _scale), int(TREE_MIN * _scale), int(
 
 # How each recommendation is cleaned.
 REMOVE_DIR_IDS = {"nm_idle", "nm_active", "buildout", "rust", "venv", "pods", "appcache", "electron",
-                  "browsers", "nodecache", "npm", "bun", "yarn", "pip", "gradle", "cargo", "conda", "codexlogs"}
+                  "browsers", "nodecache", "codexinstall", "npm", "bun", "yarn", "pip", "gradle", "cargo", "conda", "codexlogs"}
 WORKTREE_IDS = {"wt_remove"}
 REMOVE_DIR_IDS = REMOVE_DIR_IDS | {"wt_nm"}
 CMD_TOOL = {"docker": ["docker", "system", "prune", "-a", "-f"],
@@ -377,9 +377,14 @@ def recommendations(data):
         ("logs", "Logs", [h("Library/Logs")], "cache", "Old app and diagnostic logs.", None),
         ("stremio", "Stremio stream cache", [h("Library/Application Support/stremio-server/stremio-cache")], "cache", "Buffered video from streams you've watched.", None),
         ("nodecache", "Misc tool caches", [h(".cache/node"), h(".cache/prisma"), h(".cache/mongodb-binaries"), h(".cache/yt-dlp"),
-                                            h(".cache/gallery-dl"), h(".cache/codex-runtimes"), h(".cache/opencode")],
+                                            h(".cache/gallery-dl"), h(".cache/opencode")],
          "cache", "Downloaded binaries and runtimes; re-fetched on use.", None),
     ]
+    # Codex unpacks each runtime update into codex-runtime-install-*; only those leftovers are offered.
+    # The live runtime (codex-primary-runtime) runs Codex's own processes and is in NEVER_TOUCH.
+    fixed_safe.append(("codexinstall", "Leftover Codex runtime installs",
+                       sorted(glob.glob(h(".cache/codex-runtimes/codex-runtime-install-*"))), "cache",
+                       "Unpacked copies left over from Codex runtime updates. The runtime Codex uses is kept.", None))
     claimed = set()
     for rid, label, paths, cat, note, cmd in fixed_safe:
         paths = [p for p in paths if p in sizes]
@@ -574,13 +579,14 @@ PROTECTED = {h(x) for x in ("", "Library", "Library/Application Support", "Libra
 NEVER_TOUCH = [h(x) for x in (".claude/projects", ".claude/history.jsonl", ".codex/sessions", ".codex/archived_sessions",
                               ".codex/history.jsonl", ".nvm", ".config", ".vscode", ".vscode-insiders", ".cursor",
                               ".local", ".bun/bin", ".cargo/bin", ".rustup", ".opencode", ".gemini/antigravity",
-                              "Library/Application Support/Claude", ".ssh")]
+                              "Library/Application Support/Claude", ".ssh",
+                              ".cache/codex-runtimes/codex-primary-runtime")]
 
 
 def inside_home(p):
     p = os.path.normpath(p)
-    if any(p == n or p.startswith(n + "/") for n in NEVER_TOUCH):
-        return False
+    if any(p == n or p.startswith(n + "/") or n.startswith(p + "/") for n in NEVER_TOUCH):
+        return False                     # never the path itself, anything inside it, or a folder holding it
     return p.startswith(HOME + "/") and p not in PROTECTED
 
 
