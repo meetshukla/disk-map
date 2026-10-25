@@ -127,6 +127,7 @@ h1 { font-size: 20px; letter-spacing: -.01em; margin: 0; font-weight: 650; }
 .item .lab { font-weight: 560; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .lab:hover { text-decoration: underline; text-decoration-color: var(--ink3); text-underline-offset: 2px; }
 .item .pth { grid-column: 2 / 4; color: var(--ink3); font-size: 11.5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .pth .iu { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
 .item .note { grid-column: 2 / 4; color: var(--ink2); font-size: 11.5px; }
 .item .s { font-weight: 600; text-align: right; }
 .item .chev { cursor: pointer; color: var(--ink3); text-align: center; user-select: none; transition: transform .15s; line-height: 18px; }
@@ -513,16 +514,17 @@ function itemHTML(r) {
   const one = r.paths.length === 1;
   const common = commonDir(r.paths.map(p => p.p));
   const tops = [...new Set(r.paths.map(p => p.p.split("/")[0]))];
+  const busy = r.paths.filter(p => p.u).length;
   const pth = one ? "~/" + r.paths[0].p : `${r.paths.length} items · ` + (common ? "~/" + common : tops.slice(0, 3).map(t => "~/" + t).join(", ") + (tops.length > 3 ? "…" : ""));
   const rows = r.paths.slice(0, 300).map(p => `<label class="row"><input type="checkbox" data-p="${esc(p.p)}" ${selected.has(p.p) ? "checked" : ""}>
-      <span title="~/${esc(p.p)}">&lrm;~/${esc(p.p)}&lrm;</span><span>${fmt(p.s)}</span>${p.d ? `<em class="d">${esc(p.d)}</em>` : ""}</label>`).join("") +
+      <span title="~/${esc(p.p)}">&lrm;~/${esc(p.p)}&lrm;</span><span>${fmt(p.s)}</span>${p.d ? `<em class="d">${esc(p.d)}</em>` : ""}${p.u ? `<em class="d">In use by ${esc(p.u.join(", "))}, so it's skipped while that's running.</em>` : ""}</label>`).join("") +
     (r.paths.length > 300 ? `<div class="row"><span></span><span>+${r.paths.length - 300} more (included when the item is checked)</span></div>` : "");
   return `<div class="item ${openItems.has(r.id) ? "open" : ""}" data-id="${r.id}">
     <input type="checkbox" id="cb-${r.id}">
     <span class="lab" title="Show in explorer">${esc(r.label)}</span>
     <span class="s">${fmt(r.size)}</span>
     <span class="chev" title="Details">›</span>
-    <span class="pth">${esc(pth)}</span>
+    <span class="pth">${esc(pth)}${busy ? `<span class="iu" title="Skipped by Clean now while a running app uses it"> · ${one ? "" : busy + " "}in use</span>` : ""}</span>
     <div class="more"><div class="note" style="margin-bottom:4px">${esc(r.note)}${r.cmd ? ` <span style="opacity:.7">Uses <code>${esc(r.cmd.replace(/^command -v \S+ >\/dev\/null && /, ""))}</code>.</span>` : ""}</div>${rows}</div>
   </div>`;
 }

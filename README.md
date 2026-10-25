@@ -70,6 +70,11 @@ Disk Map is built so it can't surprise you:
   Top-level folders (Documents, Desktop, Downloads, Pictures, Library…) are never deleted as a whole.
 - **Some things are never touched**, whatever the rules say: `~/.ssh`, `~/.config`, editor
   settings, installed toolchains (`~/.nvm`, `~/.rustup`, `~/.cargo/bin`…), and Claude/Codex chat history.
+- **Nothing in use is deleted.** Right before each delete, Disk Map runs `lsof` and skips any
+  item a running process has a file or its working folder in: an MCP server launched with `uvx`
+  from `~/.cache/uv`, an open app's cache, an update mid-install. It shows as *skipped: in use
+  by …*; quit the app and clean again. `~/Library/Logs` is the exception, since deleting an open
+  log file is harmless. The list marks in-use items so you know before you press *Clean now*.
 - **Tools clean their own data.** Docker, Colima and simulators are cleaned with their own
   commands (`docker system prune`, `colima delete`, `xcrun simctl delete unavailable`) rather
   than by deleting their folders.

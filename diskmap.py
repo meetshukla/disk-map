@@ -537,13 +537,19 @@ def recommendations(data):
 
 
 def build_payload(data):
+    recs = recommendations(data)
+    busy = in_use([h(p["p"]) for r in recs if r["mode"] != "cmd" and r["id"] not in OPEN_OK_IDS for p in r["paths"]])
+    for r in recs:
+        for p in r["paths"]:
+            if h(p["p"]) in busy:
+                p["u"] = busy[h(p["p"])]
     return {
         "scannedAt": data["scanned_at"],
         "home": data["home"],
         "disk": data["disk"],
         "homeSize": data["sizes"].get(HOME, 0),
         "tree": build_tree(data["sizes"], data["large_files"]),
-        "recs": recommendations(data),
+        "recs": recs,
     }
 
 
@@ -598,6 +604,38 @@ def du_size(p):
         return int(out.split()[0]) * 1024
     except Exception:
         return 0
+
+
+# Cleaned even while a process has files open in them: deleting an open log file is harmless.
+OPEN_OK_IDS = {"logs"}
+
+
+def in_use(paths):
+    """{path: process names} for each of `paths` a running process has a file or its working directory in.
+    One `lsof` call; a path counts if an open name equals it or sits below it."""
+    if not paths:
+        return {}
+    try:
+        out = subprocess.run(["lsof", "-nP", "-u", os.environ.get("USER") or str(os.getuid()), "-Fpcn"],
+                             capture_output=True, text=True, errors="surrogateescape", timeout=120).stdout
+    except Exception:
+        return {}
+    real = {os.path.realpath(p): p for p in paths}       # lsof reports resolved paths
+    root, me = os.path.realpath(HOME) + "/", os.getpid()
+    hits, pid, cmd = {}, None, ""
+    for line in out.splitlines():
+        t = line[:1]
+        if t == "p":
+            pid = int(line[1:])
+        elif t == "c":
+            cmd = line[1:]
+        elif t == "n" and pid != me and line.startswith(root, 1):
+            d = line[1:]
+            while len(d) >= len(root):                  # the name itself, then each parent folder
+                if d in real:
+                    hits.setdefault(real[d], set()).add(cmd)
+                d = d.rsplit("/", 1)[0]
+    return {p: sorted(n) for p, n in hits.items()}
 
 
 def remove_paths(targets):
@@ -680,12 +718,21 @@ def run_clean(state, rels, emit):
     free_before = shutil.disk_usage(HOME).free
     emit({"start": len(jobs), "bytes": sum(p["s"] for _, p in jobs)})
     ran_cmds = set()
+    # Skip anything a running process uses (uvx MCP servers in ~/.cache/uv, open app caches, an update
+    # mid-install). Checked right before deleting; lsof (well under a second) is refreshed when its answer is 5 s old.
+    check = {os.path.join(HOME, p["p"]) for r, p in jobs if r["mode"] != "cmd" and r["id"] not in OPEN_OK_IDS}
+    busy, busy_t = {}, 0
     for i, (rec, entry) in enumerate(jobs):
         ap = os.path.join(HOME, entry["p"])
         emit({"i": i, "p": entry["p"], "label": rec["label"], "working": True})
         old = data["sizes"].get(ap, entry["s"])
+        if ap in check and time.time() - busy_t > 5:
+            busy, busy_t = in_use(sorted(check)), time.time()
         try:
-            err = clean_one(rec, entry, ap, ran_cmds)
+            if ap in check and ap in busy:
+                err = f"skipped: in use by {', '.join(busy[ap])}"
+            else:
+                err = clean_one(rec, entry, ap, ran_cmds)
         except Exception as e:
             err = str(e)
         new = du_size(ap)
