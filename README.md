@@ -53,13 +53,17 @@ The first scan takes a few minutes on a full disk. When it's done, Disk Map open
 
 ## Agent worktrees
 
-If you use Claude Code, Codex or Conductor, old git worktrees pile up quickly. Disk Map only
-offers to remove a whole worktree when nothing can be lost: it has no uncommitted changes,
-everything is pushed, it's been idle for 2+ days, and no Claude or Codex chat ever ran in it.
-Those are removed with `git worktree remove`, so their branches stay in the repo.
+If you use Claude Code, Codex, T3 Code or Conductor, old git worktrees pile up quickly, each with
+its own `node_modules`. Disk Map only offers to remove a whole worktree when nothing can be lost:
+it has no uncommitted changes, everything is pushed, it's been idle for 2+ days, and no Claude,
+Codex or T3 chat ever ran in it. Those are removed with `git worktree remove`, so their branches
+stay in the repo.
 
 Worktrees that fail any of those checks are kept so their chats can still be resumed. Disk Map
-only offers to clear their `node_modules`.
+only offers to clear their `node_modules`. Build output (`.next`, `.turbo`…) is offered in any worktree.
+
+T3 Code worktrees (`~/.t3/worktrees/<repo>/<name>`) are matched to T3 threads by reading
+`~/.t3/userdata/statev2.sqlite` read-only. If that can't be read, no T3 worktree is offered whole.
 
 ## Is it safe?
 
@@ -69,7 +73,7 @@ Disk Map is built so it can't surprise you:
 - **It only deletes paths from its own recommendation list**, and only inside your home folder.
   Top-level folders (Documents, Desktop, Downloads, Pictures, Library…) are never deleted as a whole.
 - **Some things are never touched**, whatever the rules say: `~/.ssh`, `~/.config`, editor
-  settings, installed toolchains (`~/.nvm`, `~/.rustup`, `~/.cargo/bin`…), and Claude/Codex chat history.
+  settings, installed toolchains (`~/.nvm`, `~/.rustup`, `~/.cargo/bin`…), and Claude/Codex/T3 chat history.
 - **Nothing in use is deleted.** Right before each delete, Disk Map runs `lsof` and skips any
   item a running process has a file or its working folder in: an MCP server launched with `uvx`
   from `~/.cache/uv`, an open app's cache, an update mid-install. It shows as *skipped: in use

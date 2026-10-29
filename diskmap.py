@@ -18,10 +18,12 @@ import os
 import re
 import secrets
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -156,7 +158,7 @@ CATEGORY_RULES = [
                          or any(f"/{n}" in "/" + r for n in ("Cache/", "Caches/", "CachedData/", "Code Cache/", "GPUCache/"))
                          or r.rsplit("/", 1)[-1] in APP_CACHE_NAMES),
     ("dev", lambda r: "node_modules" in r or r.startswith(("Developer", "Projects", "code", "src", "conductor",
-                                                           ".codex", ".claude", ".cursor"))
+                                                           ".codex", ".claude", ".t3/worktrees", ".cursor"))
                        or any(f"/{n}" in "/" + r + "/" for n in (".next/", ".turbo/", ".venv/", "target/", ".git/"))),
     ("media", lambda r: r.startswith(("Pictures", "Movies", "Music", "Screen Studio Projects"))
                          or r.lower().endswith((".mp4", ".mov", ".mkv", ".m4v", ".wav", ".mp3", ".photoslibrary"))),
@@ -244,10 +246,12 @@ def git(wt, *args):
 
 
 def chat_index():
-    """Where Claude Code and Codex chats ran, so worktrees with chats are never removed.
+    """Where Claude Code, Codex and T3 Code chats ran, so worktrees with chats are never removed.
     Claude: ~/.claude*/projects/<cwd with non-alphanumerics as '-'>/*.jsonl
-    Codex:  first line of each ~/.codex/sessions/**/*.jsonl records its cwd."""
-    claude, codex = {}, {}
+    Codex:  first line of each ~/.codex/sessions/**/*.jsonl records its cwd.
+    T3:     each thread's worktreePath in ~/.t3/userdata/statev2.sqlite, opened read-only.
+            None if it can't be read, and then no T3 worktree is ever removed."""
+    claude, codex, t3 = {}, {}, {}
     for base in glob.glob(os.path.join(HOME, ".claude*", "projects")):
         try:
             for d in os.listdir(base):
@@ -263,13 +267,27 @@ def chat_index():
                     codex[cwd] = codex.get(cwd, 0) + 1
             except Exception:
                 pass
-    return claude, codex
+    db = h(".t3/userdata/statev2.sqlite")
+    if os.path.exists(db):
+        try:
+            con = sqlite3.connect(f"file:{urllib.parse.quote(db)}?mode=ro", uri=True, timeout=5)
+            try:
+                t3 = dict(con.execute("SELECT json_extract(payload_json, '$.worktreePath') w, count(*) "
+                                      "FROM orchestration_v2_projection_threads WHERE w IS NOT NULL GROUP BY w"))
+            finally:
+                con.close()
+        except Exception:
+            t3 = None
+    return claude, codex, t3
 
 
 def chats_in(wt, idx):
-    claude, codex = idx
+    """Chats that ran in `wt`, or -1 when it's a T3 worktree and T3's threads couldn't be read."""
+    claude, codex, t3 = idx
+    if t3 is None and wt.startswith(h(".t3/worktrees") + "/"):
+        return -1
     return claude.get(re.sub(r"[^A-Za-z0-9]", "-", wt), 0) + \
-        sum(n for cwd, n in codex.items() if cwd == wt or cwd.startswith(wt + "/"))
+        sum(n for cwd, n in [*codex.items(), *(t3 or {}).items()] if cwd == wt or cwd.startswith(wt + "/"))
 
 
 def worktree_state(wt, size, now, idx):
@@ -291,7 +309,7 @@ def worktree_state(wt, size, now, idx):
     if unpushed:
         bits.append("unpushed check failed" if unpushed < 0 else f"{unpushed} unpushed commit{'s' * (unpushed > 1)}")
     if chats:
-        bits.append(f"{chats} chat{'s' * (chats > 1)}")
+        bits.append("T3 threads unreadable" if chats < 0 else f"{chats} chat{'s' * (chats > 1)}")
     bits.append("active today" if idle < 1 else f"idle {idle:.0f}d")
     kind = "active" if idle < 2 else "remove" if (dirty == 0 and on_branch and unpushed == 0 and not chats) else "idle"
     cmd = f"git -C {q(wt)} worktree remove {q(wt)}"
@@ -316,9 +334,9 @@ def worktree_items(roots, sizes, now):
                 continue
             inner = [os.path.join(cp, g) for g in os.listdir(cp)
                      if os.path.isdir(os.path.join(cp, g)) and os.path.exists(os.path.join(cp, g, ".git"))]
-            if len(inner) == 1:              # Codex layout: worktrees/<id>/<repo>
-                jobs.append((inner[0], size))
-            elif not inner and size >= REC_MIN:
+            if inner:                        # Codex worktrees/<id>/<repo>; T3, Conductor <root>/<repo>/<name>
+                jobs += [(g, size if len(inner) == 1 else sizes.get(g, 0)) for g in inner]
+            elif size >= REC_MIN:
                 jobs.append((cp, size))      # leftover folder with no git checkout
     idx = chat_index()
     groups = {"remove": [], "idle": [], "active": []}
@@ -424,25 +442,25 @@ def recommendations(data):
     def skip_area(p):
         """True unless `p` sits in a normal project folder. Tool installs live in hidden folders
         (~/.nvm global packages, ~/.vscode and ~/.cursor extensions, ~/.config/yarn/global…) and
-        must never be offered; agent worktrees (.claude/worktrees, .codex/worktrees) are projects."""
+        must never be offered; agent worktrees (.claude/.codex/.t3 worktrees) are projects."""
         segs = os.path.relpath(os.path.dirname(p), HOME).split("/")
         for i, s in enumerate(segs):
-            if s.startswith(".") and not (s in (".claude", ".codex") and segs[i + 1:i + 2] == ["worktrees"]):
+            if s.startswith(".") and not (s in (".claude", ".codex", ".t3") and segs[i + 1:i + 2] == ["worktrees"]):
                 return True
         return segs[0] in ("Library", "Applications") or any(s in ("extensions", "vendor") for s in segs) \
             or (segs[-1] == "lib" and os.path.basename(p) == "node_modules")
 
-    # Agent worktrees (Claude Code, Codex, Conductor). A whole worktree is only offered when there is
+    # Agent worktrees (Claude Code, Codex, T3 Code, Conductor). A whole worktree is only offered when there is
     # nothing to lose: clean, pushed, idle 2+ days and no chat ever ran in it. Other idle worktrees
     # only offer their node_modules, so the worktree and its chats stay resumable.
     roots = [p for p in pat if os.path.basename(p) == "worktrees" and "/.git/" not in p
              and ("/.claude/" in p or p == h(".codex/worktrees"))]
-    for extra in (h("conductor/workspaces"), h(".codex/worktrees")):
+    for extra in (h("conductor/workspaces"), h(".codex/worktrees"), h(".t3/worktrees")):
         if extra in sizes and extra not in roots:
             roots.append(extra)
     wts = worktree_items(roots, sizes, now)
     add("wt_remove", "Unused agent worktrees", wts["remove"], "safe", "dev",
-        "Clean, fully pushed, idle 2+ days, and no Claude or Codex chat ever ran in them. "
+        "Clean, fully pushed, idle 2+ days, and no Claude, Codex or T3 chat ever ran in them. "
         "Removed with `git worktree remove`; their branches stay in the repo.")
     all_wt = [w["p"] for g in wts.values() for w in g]
     in_wt = lambda p: any(p.startswith(w + "/") for w in all_wt)
@@ -586,7 +604,7 @@ NEVER_TOUCH = [h(x) for x in (".claude/projects", ".claude/history.jsonl", ".cod
                               ".codex/history.jsonl", ".nvm", ".config", ".vscode", ".vscode-insiders", ".cursor",
                               ".local", ".bun/bin", ".cargo/bin", ".rustup", ".opencode", ".gemini/antigravity",
                               "Library/Application Support/Claude", ".ssh",
-                              ".cache/codex-runtimes/codex-primary-runtime")]
+                              ".cache/codex-runtimes/codex-primary-runtime", ".t3/userdata")]
 
 
 def inside_home(p):
